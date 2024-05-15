@@ -4,6 +4,8 @@ numpy
 groq
 langchain_community
 langchain_pinecone
+chromadb
+python-dotenv
 transformers
 scikit-learn
 sentence-transformers

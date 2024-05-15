@@ -1,0 +1,20 @@
+name: gdr_rag
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - streamlit
+  - pandas
+  - numpy
+  - groq
+  - langchain
+  - chromadb
+  - python-dotenv
+  - transformers
+  - scikit-learn
+  - sentence-transformers
+#  - pip
+#  - pip:
+#    - langchain_pinecone
+#    - langchain_community
