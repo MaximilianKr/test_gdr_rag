@@ -6,6 +6,7 @@ langchain_community
 langchain_pinecone
 chromadb
 python-dotenv
+tiktoken
 transformers
 scikit-learn
 sentence-transformers
