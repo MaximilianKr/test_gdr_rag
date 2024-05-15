@@ -1,23 +1,29 @@
 import streamlit as st
+
 import pandas as pd
 import numpy as np
 from groq import Groq
-from pinecone import Pinecone
+import os
 
+from langchain_community.vectorstores import Chroma
+from langchain.text_splitter import TokenTextSplitter
+from langchain.docstore.document import Document
 from langchain_community.embeddings.sentence_transformer import SentenceTransformerEmbeddings
-from langchain_pinecone import PineconeVectorStore
+
+from dotenv import load_dotenv, find_dotenv
+_ = load_dotenv(find_dotenv())
 
 
 def get_relevant_excerpts(user_question, docsearch):
     """
-    This function retrieves the most relevant excerpts from presidential speeches based on the user's question.
+    This function retrieves the most relevant excerpts from lexicon articles based on the user's question.
 
     Parameters:
     user_question (str): The question asked by the user.
-    docsearch (PineconeVectorStore): The Pinecone vector store containing the presidential speeches.
+    docsearch (ChromaDBVectorstore): The Pinecone vector store containing the lexicon articles.
 
     Returns:
-    str: A string containing the most relevant excerpts from presidential speeches.
+    str: A string containing the most relevant excerpts from lexicon articles.
     """
 
     # Perform a similarity search on the Pinecone vector store using the user's question
@@ -29,7 +35,7 @@ def get_relevant_excerpts(user_question, docsearch):
     return relevant_excerpts
 
 
-def presidential_speech_chat_completion(client, model, user_question, relevant_excerpts, additional_context):
+def rag_chat_completion(client, model, user_question, relevant_excerpts, seed=42):
     """
     This function generates a response to the user's question using a pre-trained model.
 
@@ -37,26 +43,28 @@ def presidential_speech_chat_completion(client, model, user_question, relevant_e
     client (Groq): The Groq client used to interact with the pre-trained model.
     model (str): The name of the pre-trained model.
     user_question (str): The question asked by the user.
-    relevant_excerpts (str): A string containing the most relevant excerpts from presidential speeches.
-    additional_context (str): Additional context provided by the user.
+    relevant_excerpts (str): A string containing the most relevant excerpts from lexicon articles.
 
     Returns:
     str: A string containing the response to the user's question.
     """
 
     # Define the system prompt
-    system_prompt = '''
-    You are a presidential historian. Given the user's question and relevant excerpts from 
-    presidential speeches, answer the question by including direct quotes from presidential speeches. 
-    When using a quote, site the speech that it was from (ignoring the chunk).
-    '''
+    # system_prompt = '''
+    # Du bist ein Historiker, der sich auf Autoren der ehemaligen DDR spezialisiert hat. 
+    # Beantworte die Frage des Nutzers auf Grundlage der entsprechenden Textauszüge aus DDR-Lexikonartikeln. 
+    # Gib die Quelle mit an aus der die Informationen verwendest (verweise nicht auf den Textauszug).
+    # Wenn keiner der Textauszüge relevante Informationen erhält, dann teile mit, dass du die Frage anhand
+    # der Daten nicht beantworten kannst.
+    # '''
 
-    # Add the additional context to the system prompt if it's not empty
-    if additional_context != '':
-        system_prompt += '''\n
-        The user has provided this additional context:
-        {additional_context}
-        '''.format(additional_context=additional_context)
+    system_prompt = '''
+    Du bist ein Historiker, der sich auf Autoren der ehemaligen DDR spezialisiert hat. 
+    Beantworte die Frage des Nutzers auf Grundlage der entsprechenden Textauszüge aus DDR-Lexikonartikeln. 
+    Gib die Quelle an, aus der die Informationen stammen (ignoriere den Textauszug). 
+    Wenn keiner der Textauszüge relevante Informationen enthält, teile dem Nutzer mit, 
+    dass du die Frage anhand der verfügbaren Daten nicht beantworten kannst.
+    '''
 
     # Generate a response to the user's question using the pre-trained model
     chat_completion = client.chat.completions.create(
@@ -67,10 +75,12 @@ def presidential_speech_chat_completion(client, model, user_question, relevant_e
             },
             {
                 "role": "user",
-                "content": "User Question: " + user_question + "\n\nRelevant Speech Exerpt(s):\n\n" + relevant_excerpts,
+                "content": "Nutzerfrage: " + user_question + "\n\nRelevante Textauszüge:\n\n" + relevant_excerpts,
             }
         ],
-        model = model
+        model = model,
+        temperature = 0,
+        # seed = seed  # For reproducibility?
     )
     
     # Extract the response from the chat completion
@@ -79,60 +89,111 @@ def presidential_speech_chat_completion(client, model, user_question, relevant_e
     return response
 
 
+def load_documents(filename):
+    """
+    This function loads preprocessed documents for the vectorstore based on an input csv file.
+    TODO: fix this
+    """
+    gloger_df = pd.read_csv(filename)
+
+    text_splitter = TokenTextSplitter(
+        # chunk_size=450, # 500 tokens is the max
+        # chunk_overlap=100 # Overlap of N tokens between chunks (to reduce chance of cutting out relevant connected text like middle of sentence)
+        chunk_size=1024,
+        chunk_overlap=128
+    )
+
+    documents = []
+
+    for index, row in gloger_df[gloger_df['Content'].notnull()].iterrows():
+        chunks = text_splitter.split_text(row.Content)
+        total_chunks = len(chunks)
+        for chunk_num in range(1,total_chunks+1):
+            header = f"Quelle: {row['Source']}\(Textauszug {chunk_num} von {total_chunks})\n\n"
+            
+            chunk = chunks[chunk_num-1]
+            documents.append(Document(page_content=header + chunk, metadata={"source": "local"}))
+
+    return documents
+    
+
 def main():
     """
     This is the main function that runs the application. It initializes the Groq client and the SentenceTransformer model,
-    gets user input from the Streamlit interface, retrieves relevant excerpts from presidential speeches based on the user's question,
+    gets user input from the Streamlit interface, retrieves relevant excerpts from lexicon articles based on the user's question,
     generates a response to the user's question using a pre-trained model, and displays the response.
     """
 
-    embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
+    # Load Embedding model
+    # all-MiniLM-L6-v2  # 384dim
+    # embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
+    # BAAI/bge-m3  # 1024dim
+    embedding_function = SentenceTransformerEmbeddings(model_name="BAAI/bge-m3")
     
     # Initialize the Groq client
-    groq_api_key = st.secrets["GROQ_API_KEY"]
-    pinecone_api_key=st.secrets["PINECONE_API_KEY"]
-    pinecone_index_name = "presidential-speeches"
+    groq_api_key = os.environ.get('GROQ_API_KEY')
+
+    # groq_api_key = st.secrets["GROQ_API_KEY"]
+    # pinecone_api_key=st.secrets["PINECONE_API_KEY"]
+    # pinecone_index_name = "presidential-speeches"
     client = Groq(
         api_key=groq_api_key
     )
 
-    pc = Pinecone(api_key = pinecone_api_key)
-    docsearch = PineconeVectorStore(index_name=pinecone_index_name, embedding=embedding_function)
+    # Load documents
+    documents = load_documents("gloger_gotthold.csv")
+
+    # Initialize vector database
+    # TODO: load chroma from disk or use pinecone
+    # pc = Pinecone(api_key = pinecone_api_key)
+    # docsearch = PineconeVectorStore(index_name=pinecone_index_name, embedding=embedding_function)
+    docsearch = Chroma.from_documents(documents, embedding_function)
 
     # Display the Groq logo
-    spacer, col = st.columns([5, 1])  
-    with col:  
-        st.image('groqcloud_darkmode.png')
+    # spacer, col = st.columns([5, 1])  
+    # with col:  
+    #     st.image('groqcloud_darkmode.png')
 
     # Display the title and introduction of the application
-    st.title("Presidential Speeches RAG")
+    st.title("GDR RAG Test")
     multiline_text = """
-    Welcome! Ask questions about U.S. presidents, like "What were George Washington's views on democracy?" or "What did Abraham Lincoln say about national unity?". The app matches your question to relevant excerpts from presidential speeches and generates a response using a pre-trained model.
+    Stelle Fragen zu Autoren der ehemaligen DDR. Die App ordnet der Frage relevante Auszüge aus Lexikonartikeln zu und generiert eine Antwort mithilfe eines vortrainierten Modells. Zum Beispiel:\n
+    ```
+    Wann wurde Gloger Gotthold geboren?
+    ```\n
+    ```
+    Wo studierte Gloger Gotthold?
+    ```\n
+    ```
+    Welche Werke veröffentlichte Gloger Gotthold?
+    ```
     """
 
     st.markdown(multiline_text, unsafe_allow_html=True)
-
-    # Add customization options to the sidebar
-    st.sidebar.title('Customization')
-    additional_context = st.sidebar.text_input('Enter additional summarization context for the LLM here (i.e. write it in spanish):')
-    model = st.sidebar.selectbox(
-        'Choose a model',
-        ['llama3-8b-8192', 'mixtral-8x7b-32768', 'gemma-7b-it']
-    )
+   
+    model = 'mixtral-8x7b-32768'
 
     # Get the user's question
-    user_question = st.text_input("Ask a question about a US president:")
+    user_question = st.text_input("Gib deine Frage ein:")
 
     if user_question:
-        pinecone_index_name = "presidential-speeches"
         relevant_excerpts = get_relevant_excerpts(user_question, docsearch)
-        response = presidential_speech_chat_completion(client, model, user_question, relevant_excerpts, additional_context)
+        response = rag_chat_completion(client, model, user_question, relevant_excerpts)
         st.write(response)
-
 
 
 if __name__ == "__main__":
     main()
 
+# TODO:
 
-
+# - test chunk length / overlap iterations
+# - use persistent chroma client
+# - fix load_documents(filename)
+# - rewrite README.md
+# - rewrite requirements / environment
+# - add pinecone?
+# - check system prompt for consistency / iterate
+# - test other embedding function
+# - add streaming from groq / streamlit
+# - add more authors --> append author name to every chunk to not mix up results?
