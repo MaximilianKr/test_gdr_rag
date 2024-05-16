@@ -61,7 +61,7 @@ def rag_chat_completion(client, model, user_question, relevant_excerpts, seed=42
     system_prompt = '''
     Du bist ein Historiker, der sich auf Autoren der ehemaligen DDR spezialisiert hat. 
     Beantworte die Frage des Nutzers auf Grundlage der entsprechenden Textauszüge aus DDR-Lexikonartikeln. 
-    Gib die Quelle an, aus der die Informationen stammen (ignoriere den Textauszug). 
+    Gib den Namen der Quelle an, aus der die Informationen stammen (ohne den Textauszug). 
     Wenn keiner der Textauszüge relevante Informationen enthält, teile dem Nutzer mit, 
     dass du die Frage anhand der verfügbaren Daten nicht beantworten kannst.
     '''
@@ -97,8 +97,11 @@ def load_documents(filename):
     gloger_df = pd.read_csv(filename)
 
     text_splitter = TokenTextSplitter(
+        # For all-MiniLM-L6-v2
         # chunk_size=450, # 500 tokens is the max
         # chunk_overlap=100 # Overlap of N tokens between chunks (to reduce chance of cutting out relevant connected text like middle of sentence)
+        
+        # For BAAI/bge-m3
         chunk_size=1024,
         chunk_overlap=128
     )
@@ -125,8 +128,10 @@ def main():
     """
 
     # Load Embedding model
+    
     # all-MiniLM-L6-v2  # 384dim
     # embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
+    
     # BAAI/bge-m3  # 1024dim
     embedding_function = SentenceTransformerEmbeddings(model_name="BAAI/bge-m3")
     
@@ -149,13 +154,8 @@ def main():
     # docsearch = PineconeVectorStore(index_name=pinecone_index_name, embedding=embedding_function)
     docsearch = Chroma.from_documents(documents, embedding_function)
 
-    # Display the Groq logo
-    # spacer, col = st.columns([5, 1])  
-    # with col:  
-    #     st.image('groqcloud_darkmode.png')
-
     # Display the title and introduction of the application
-    st.title("GDR RAG Test")
+    st.title("DDR RAG Test")
     multiline_text = """
     Stelle Fragen zu Autoren der ehemaligen DDR. Die App ordnet der Frage relevante Auszüge aus Lexikonartikeln zu und generiert eine Antwort mithilfe eines vortrainierten Modells. Zum Beispiel:\n
     ```
@@ -187,7 +187,7 @@ if __name__ == "__main__":
 
 # TODO:
 
-# - test chunk length / overlap iterations
+# - test chunk length / overlap iterations --> depends on embedding model!
 # - use persistent chroma client
 # - fix load_documents(filename)
 # - rewrite README.md
