@@ -1,21 +1,21 @@
-# Presidential Speeches RAG
+# GDR Authors RAG
 
-This repository contains a Streamlit application that allows users to ask questions about US presidents. The application uses a pre-trained model to find relevant excerpts from presidential speeches and generate responses to the user's questions.
+This work in progress repository contains a `Streamlit` application that allows users to ask questions about authors of the former GDR / Eastern Germany.
+
+The first version (currently on `main` branch) uses a pre-trained model via [Groq](https://groq.com/)'s API to find relevant excerpts from lexicon articles and generate responses to the user's questions.
+
+The second version (currently on `dev` branch) takes text as input and extracts relevant information based on a set of pre-defined prompts to return structured output.
 
 ## Features
 
-- **Question-Answering System**: Users can ask questions about US presidents, and the application will generate responses based on relevant excerpts from presidential speeches.
+### Version 1 - RAG
+
+- **Question-Answering System**: Users can ask questions about authors, and the application will generate responses based on relevant excerpts from lexicon articles.
 
 - **Customization**: Users can provide additional context for the model and choose from a list of pre-trained models.
 
-- **Similarity Search**: The application uses a Pinecone vector store to find the most relevant excerpts from presidential speeches based on the user's question.
+- **Similarity Search**: The application uses a vector store to find the most relevant excerpts from lexicon articles based on the user's question.
 
-## Code Overview
+### Version 2 - Information Extraction
 
-The main script of the application is [app.py](./app.py). Here's a brief overview of its main functions:
-
-- `get_relevant_excerpts(user_question, docsearch)`: This function takes a user's question and a Pinecone vector store as input, performs a similarity search on the vector store using the user's question, and returns the most relevant excerpts from presidential speeches.
-
-- `get_relevant_excerpts(user_question, docsearch)`: This function takes a user's question and a Pinecone vector store as input, performs a similarity search on the vector store using the user's question, and returns the most relevant excerpts from presidential speeches.
-
-- `presidential_speech_chat_completion(client, model, user_question, relevant_excerpts, additional_context)`: This function takes a Groq client, a pre-trained model, a user's question, relevant excerpts from presidential speeches, and additional context as input. It generates a response to the user's question based on the relevant excerpts and the additional context
+- **Information Extraction**: Users can paste lexicon articles and choose from a set of pre-defined prompts to extract relevant information.
