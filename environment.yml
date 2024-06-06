@@ -1,4 +1,4 @@
-name: gdr_rag
+name: gdr
 channels:
   - conda-forge
   - defaults
@@ -15,7 +15,8 @@ dependencies:
   - transformers
   - scikit-learn
   - sentence-transformers
-#  - pip
-#  - pip:
+ - pip
+ - pip:
+     - google-generativeai
 #    - langchain_pinecone
 #    - langchain_community
